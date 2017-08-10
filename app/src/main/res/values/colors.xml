@@ -4,4 +4,9 @@
     <color name="colorPrimaryDark">#303F9F</color>
     <color name="colorAccent">#FF4081</color>
     <color name="navajowhite">#FFDEAD</color><!--纳瓦白 -->
+    <color name="darkslategray">#2F4F4F</color><!--暗瓦灰色 -->
+    <color name="seagreen">#2E8B57</color><!--海绿色 -->
+    <color name="forestgreen">#228B22</color><!--森林绿 -->
+    <color name="gray_cc">#cccccc</color><!--灰色cc -->
+    <color name="gray_8f">#8f8f8f</color><!--灰色8f -->
 </resources>

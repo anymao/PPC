@@ -5,6 +5,8 @@ import android.annotation.TargetApi;
 import android.app.Dialog;
 import android.app.ProgressDialog;
 import android.content.ContentUris;
+import android.content.ContentValues;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -21,6 +23,7 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.content.FileProvider;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -37,17 +40,20 @@ import org.opencv.android.OpenCVLoader;
 import org.opencv.android.Utils;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfPoint;
 import org.opencv.core.Size;
 import org.opencv.highgui.Highgui;
 import org.opencv.imgproc.Imgproc;
 
 import java.io.BufferedOutputStream;
-import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.security.Provider;
+import java.util.ArrayList;
+import java.util.List;
 
 import top.anymore.ppc.R;
 import top.anymore.ppc.dataprocess.DataProcess;
@@ -62,6 +68,7 @@ public class MainActivity extends AppCompatActivity {
     private ImageView ivPic;
     private TextView tvResult;
     private Dialog selectPicDialog;
+    private File outputImage;//原始照片
     private Uri imageUri;//获取的照片保存路径
     private ProgressDialog mProgressDialog;
 
@@ -85,6 +92,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         initViews();//初始化布局
+        outputImage = new File(getExternalCacheDir(),"output_image.jpg");
     }
 
     private void initViews() {
@@ -112,6 +120,9 @@ public class MainActivity extends AppCompatActivity {
         mProgressDialog.setMessage("请稍后....");
         mProgressDialog.setCanceledOnTouchOutside(false);
         mProgressDialog.setCancelable(false);
+
+        //test
+
     }
 
     private View.OnClickListener listener = new View.OnClickListener() {
@@ -169,7 +180,6 @@ public class MainActivity extends AppCompatActivity {
      */
     private void takePhoto() {
         //拍照后得到的照片存储位置
-        File outputImage = new File(getExternalCacheDir(),"output_image.jpg");
         try {
             if (outputImage.exists()){
                 outputImage.delete();
@@ -178,14 +188,17 @@ public class MainActivity extends AppCompatActivity {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        //调用系统相机
+        Intent intent = new Intent("android.media.action.IMAGE_CAPTURE");
         //通过文件获取其URI
         if (Build.VERSION.SDK_INT >= 24){
+            //添加这一句表示对目标应用临时授权该Uri所代表的文件
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             imageUri = FileProvider.getUriForFile(MainActivity.this,"top.anymore.ppc.fileprovider",outputImage);
         }else {
             imageUri = Uri.fromFile(outputImage);
         }
-        //调用系统相机
-        Intent intent = new Intent("android.media.action.IMAGE_CAPTURE");
+//        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         intent.putExtra(MediaStore.EXTRA_OUTPUT,imageUri);
         startActivityForResult(intent,ACTION_TACK_PHOTO);
     }
@@ -219,7 +232,12 @@ public class MainActivity extends AppCompatActivity {
      * 使用系统的裁剪程序
      */
     private void cropPhoto(){
+        LogUtil.v(tag,"cropPhoto");
         Intent intent = new Intent("com.android.camera.action.CROP");
+        if(Build.VERSION.SDK_INT>=24){
+            imageUri = FileProvider.getUriForFile(MainActivity.this,"top.anymore.ppc.fileprovider",outputImage);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        }
         intent.setDataAndType(imageUri,"image/*");
         intent.putExtra("scale",true);//允许缩放
         intent.putExtra("return-data",false);//不将结果在intent中返回，因为这将返回缩略图
@@ -228,9 +246,11 @@ public class MainActivity extends AppCompatActivity {
 //        intent.putExtra("aspectY",1);
 //        intent.putExtra("outputX",60);//固定大小
 //        intent.putExtra("outputY",60);
-        intent.putExtra(MediaStore.EXTRA_OUTPUT,imageUri);//裁剪结果保存位置
+        intent.putExtra(MediaStore.EXTRA_OUTPUT,Uri.fromFile(outputImage));//裁剪结果保存位置
         startActivityForResult(intent,ACTION_CROP_PHOTO);//跳转
     }
+    //适配android7.0+
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         selectPicDialog.dismiss();
@@ -248,16 +268,22 @@ public class MainActivity extends AppCompatActivity {
                         handleImageBeforeKitKat(data);
                     }
                     cropPhoto();
+
                 }
                 break;
             case ACTION_CROP_PHOTO:
+                LogUtil.v(tag,"code:"+resultCode);
                 if (resultCode == RESULT_OK){
                     try {
-                        Bitmap bitmap = BitmapFactory.decodeStream(getContentResolver().openInputStream(imageUri));
+                        Bitmap bitmap;
+//                        LogUtil.v(tag,imageUri.toString());
+                        bitmap = BitmapFactory.decodeStream(getContentResolver().openInputStream(imageUri));
                         ivPic.setImageBitmap(bitmap);
                     } catch (FileNotFoundException e) {
                         e.printStackTrace();
                     }
+                    //解除检测按钮的禁用状态
+                    btnStartDetect.setEnabled(true);
                 }
                 break;
         }
@@ -267,8 +293,34 @@ public class MainActivity extends AppCompatActivity {
         Uri uri = data.getData();
         String imagePath = getImagePath(uri,null);
         if (imagePath != null){
-            imageUri = Uri.fromFile(new File(imagePath));
+//            imageUri = Uri.fromFile(new File(imagePath));
+            copyFile(new File(imagePath),outputImage);
+            imageUri = Uri.fromFile(outputImage);
         }
+    }
+
+    /**
+     * 复制图片，将来自图库的照片拷贝到应用目录下
+     * @param src 来自图库的图片文件
+     * @param dst 应用目录下的图片文件
+     */
+    private void copyFile(File src,File dst){
+        try {
+            FileOutputStream fos = new FileOutputStream(dst);
+            FileInputStream fis = new FileInputStream(src);
+            byte[] bytes = new byte[1024];
+            int len;
+            while ((len=fis.read(bytes)) > 0){
+                fos.write(bytes,0,len);
+            }
+            fos.close();
+            fis.close();
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
     }
     @TargetApi(19)
     private void handleImageOnKitKat(Intent data) {
@@ -293,7 +345,9 @@ public class MainActivity extends AppCompatActivity {
             imagePath = uri.getPath();
         }
         if (imagePath != null){
-            imageUri = Uri.fromFile(new File(imagePath));
+//            imageUri = Uri.fromFile(new File(imagePath));
+            copyFile(new File(imagePath),outputImage);
+            imageUri = Uri.fromFile(outputImage);
         }
     }
 
@@ -322,7 +376,7 @@ public class MainActivity extends AppCompatActivity {
             mLoaderCallback.onManagerConnected(LoaderCallbackInterface.SUCCESS);
         }
     }
-    private Bitmap srcBitmap,blurSrcBitmap,grayBitmap,binaryBitmap,scaleBinaryBitmap;//存储原图,灰度图，二值图的位图对象
+    private Bitmap srcBitmap,blurSrcBitmap,grayBitmap,binaryBitmap,scaleBinaryBitmap,gaosScrBitmap;//存储原图,灰度图，二值图的位图对象
     private int result;
     /**
      * 采用异步处理，这里将图片二值化
@@ -349,32 +403,29 @@ public class MainActivity extends AppCompatActivity {
                 srcBitmap = BitmapFactory.decodeStream(getContentResolver().openInputStream(imageUri));
                 grayBitmap = Bitmap.createBitmap(srcBitmap.getWidth(), srcBitmap.getHeight(), Bitmap.Config.RGB_565);
                 binaryBitmap = Bitmap.createBitmap(srcBitmap.getWidth(),srcBitmap.getHeight(),Bitmap.Config.RGB_565);
-//                scale = Bitmap.createBitmap(srcBitmap.getWidth()*scale,s)
-//                scaleBinaryBitmap = Bitmap.createBitmap()
-                Utils.bitmapToMat(srcBitmap, srcMat);//convert original bitmap to Mat, R G B.
-//                Imgproc.blur(srcMat,blurSrcMat,new Size(3,3));//均值模糊处理
-                Imgproc.cvtColor(srcMat, grayMat, Imgproc.COLOR_RGB2GRAY);//rgbMat to gray grayMat
-                Imgproc.adaptiveThreshold(grayMat,binaryMat,255,Imgproc.ADAPTIVE_THRESH_MEAN_C,Imgproc.THRESH_BINARY_INV,blockSize,constValue);
+                Utils.bitmapToMat(srcBitmap, srcMat);//读取原图进入srcMat
+                Imgproc.blur(srcMat,blurSrcMat,new Size(3,3));//均值模糊处理
+                Imgproc.cvtColor(blurSrcMat, grayMat, Imgproc.COLOR_RGB2GRAY);//模糊处理的原图转灰度图
+                Imgproc.adaptiveThreshold(grayMat,binaryMat,255,Imgproc.ADAPTIVE_THRESH_MEAN_C,Imgproc.THRESH_BINARY_INV,blockSize,constValue);//自适应阈值，灰度图转二值图
                 Utils.matToBitmap(grayMat, grayBitmap); //convert mat to bitmap
                 Utils.matToBitmap(binaryMat,binaryBitmap);
                 LogUtil.i(tag, "procSrc2Gray sucess...");
                 //test
-                LogUtil.v(tag,"first:"+binaryMat.rows()+"-"+binaryMat.cols());
+//                LogUtil.v(tag,"first:"+binaryMat.rows()+"-"+binaryMat.cols());
 
-                Size size=new Size(binaryMat.width()*scale,binaryMat.height()*scale);
+                Size size=new Size(binaryMat.width()*scale,binaryMat.height()*scale);//二值图片降质
                 Mat scaleBinaryMat = new Mat(size,CvType.CV_8UC1);
-                Imgproc.resize(binaryMat,scaleBinaryMat,size);
-//                Utils.matToBitmap(scaleBinaryMat,scaleBinaryBitmap);
-//                LogUtil.v(tag,"second:"+scaleBinaryMat.rows()+"-"+scaleBinaryMat.cols());
-                Highgui.imwrite(getExternalCacheDir()+"/scale.jpg",scaleBinaryMat);
-                DataProcess dataProcess = new DataProcess();
-                dataProcess.setMatrix(scaleBinaryMat);
-                result = dataProcess.solve();
+                Imgproc.resize(binaryMat,scaleBinaryMat,size);//图片压缩，长宽各缩小一半
 
+                Highgui.imwrite(getExternalCacheDir()+"/scale.jpg",scaleBinaryMat);//保存缩略后的二值图
+                File log = new File(getExternalCacheDir(),"log.txt");
+                LogUtil.v(tag,log.getAbsolutePath());
+                DataProcess dataProcess = new DataProcess();
+                dataProcess.setMatrix(binaryMat);
+                result = dataProcess.solve();
+                scaleBinaryBitmap = BitmapFactory.decodeFile(getExternalCacheDir()+"/scale.jpg");
                 //test
 
-            } catch (FileNotFoundException e) {
-                e.printStackTrace();
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -386,10 +437,11 @@ public class MainActivity extends AppCompatActivity {
         @Override
         protected void onPostExecute(Void aVoid) {
             mProgressDialog.dismiss();
-            ivPic.setImageBitmap(binaryBitmap);
+            ivPic.setImageBitmap(scaleBinaryBitmap);
             tvResult.setText("分析结果是:"+result);
         }
     }
+
     private void saveBitmap2File(Bitmap bitmap,File dstFile){
         try {
             BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(dstFile));
