@@ -32,7 +32,7 @@ public class DataProcess {
         for (int i = 0; i < rows; i++) {
             for (int j = 0; j < cols; j++) {
                 double[] p = mat.get(i,j);
-                if (p[0] == 255){
+                if (p[0] == 255.0){
                     matrix[i][j] = true;
                 }
             }
@@ -46,7 +46,7 @@ public class DataProcess {
             e.printStackTrace();
         }
     }
-    public int solve(){
+    public int solve(boolean mode){
 //        int result = 0;
         LogUtil.v("tag","rows:"+rows+"cols"+cols);
         for (int i = 0; i < rows; i++) {
@@ -83,9 +83,29 @@ public class DataProcess {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        dataAnalysis();
+        if (mode){
+            dataAnalysis2();
+        }else {
+            dataAnalysis();
+        }
         return pixels.size();
 //        return result;
+    }
+
+    private void dataAnalysis2() {
+        LogUtil.v("DataProcess","处理前："+pixels.size());
+        Collections.sort(pixels);
+        int middleIndex = pixels.size()/2;
+        int middlePixels = pixels.get(middleIndex);
+        int min = (int) (middlePixels*0.5),max = middlePixels*5;
+        for (int i = 0; i < pixels.size(); i++) {
+            Integer pixel = pixels.get(i);
+            if (pixel < 50){
+                pixels.remove(i);
+                --i;
+            }
+        }
+        LogUtil.v("DataProcess","处理后："+pixels.size());
     }
 
     private void dataAnalysis() {
@@ -97,8 +117,9 @@ public class DataProcess {
         int min = (int) (middlePixels*0.5),max = middlePixels*5;
         for (int i = 0; i < pixels.size(); i++) {
             Integer pixel = pixels.get(i);
-            if (pixel < min || pixel > max){
+            if (pixel < 10 || pixel > max){
                 pixels.remove(i);
+                --i;
             }
         }
         LogUtil.v("DataProcess","处理后："+pixels.size());

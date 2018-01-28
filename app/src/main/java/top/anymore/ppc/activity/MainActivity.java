@@ -23,6 +23,7 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.content.FileProvider;
 import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.SwitchCompat;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -30,6 +31,7 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.CompoundButton;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -71,6 +73,8 @@ public class MainActivity extends AppCompatActivity {
     private File outputImage;//原始照片
     private Uri imageUri;//获取的照片保存路径
     private ProgressDialog mProgressDialog;
+    private SwitchCompat scMode;
+    private boolean MODE = false;
 
     //加载opencv的回调监听
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
@@ -101,6 +105,13 @@ public class MainActivity extends AppCompatActivity {
         btnStartDetect = (Button) findViewById(R.id.btn_start_detect);
         tvResult = (TextView) findViewById(R.id.tv_result);
         ivPic = (ImageView) findViewById(R.id.iv_pic);
+        scMode = (SwitchCompat) findViewById(R.id.sc_mode);
+        scMode.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                MODE = isChecked;
+            }
+        });
         selectPicDialog = new Dialog(MainActivity.this,R.style.ActionSheetDialogStyle);
         View selectDiagView = LayoutInflater.from(MainActivity.this).inflate(R.layout.diaglog_select_pic,null,false);
         selectDiagView.findViewById(R.id.btn_take_photo).setOnClickListener(listener);
@@ -242,10 +253,7 @@ public class MainActivity extends AppCompatActivity {
         intent.putExtra("scale",true);//允许缩放
         intent.putExtra("return-data",false);//不将结果在intent中返回，因为这将返回缩略图
         intent.putExtra("crop",true);//允许裁剪
-//        intent.putExtra("aspectX",1);//比例
-//        intent.putExtra("aspectY",1);
-//        intent.putExtra("outputX",60);//固定大小
-//        intent.putExtra("outputY",60);
+
         intent.putExtra(MediaStore.EXTRA_OUTPUT,Uri.fromFile(outputImage));//裁剪结果保存位置
         startActivityForResult(intent,ACTION_CROP_PHOTO);//跳转
     }
@@ -422,7 +430,7 @@ public class MainActivity extends AppCompatActivity {
                 LogUtil.v(tag,log.getAbsolutePath());
                 DataProcess dataProcess = new DataProcess();
                 dataProcess.setMatrix(binaryMat);
-                result = dataProcess.solve();
+                result = dataProcess.solve(MODE);
                 scaleBinaryBitmap = BitmapFactory.decodeFile(getExternalCacheDir()+"/scale.jpg");
                 //test
 
