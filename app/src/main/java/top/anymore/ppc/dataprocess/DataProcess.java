@@ -32,7 +32,7 @@ public class DataProcess {
         for (int i = 0; i < rows; i++) {
             for (int j = 0; j < cols; j++) {
                 double[] p = mat.get(i,j);
-                if (p[0] == 255.0){
+                if (p[0] != 255.0){
                     matrix[i][j] = true;
                 }
             }
@@ -100,7 +100,7 @@ public class DataProcess {
         int min = (int) (middlePixels*0.5),max = middlePixels*5;
         for (int i = 0; i < pixels.size(); i++) {
             Integer pixel = pixels.get(i);
-            if (pixel < 50){
+            if (pixel < CacheValue.threshold){
                 pixels.remove(i);
                 --i;
             }

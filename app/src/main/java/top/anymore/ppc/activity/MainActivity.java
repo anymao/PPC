@@ -7,7 +7,9 @@ import android.app.ProgressDialog;
 import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Bitmap;
@@ -22,12 +24,17 @@ import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.content.FileProvider;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.SwitchCompat;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Button;
@@ -40,6 +47,7 @@ import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.android.Utils;
+import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfPoint;
@@ -60,13 +68,14 @@ import java.util.List;
 import top.anymore.ppc.R;
 import top.anymore.ppc.dataprocess.DataProcess;
 import top.anymore.ppc.logutil.LogUtil;
+import top.anymore.ppc.view.DragZoomImageView;
 
 public class MainActivity extends AppCompatActivity {
     private static final String tag = "MainActivity";
     private static final int ACTION_TACK_PHOTO = 1;
     private static final int ACTION_FROM_ALBUM = 2;
     private static final int ACTION_CROP_PHOTO = 3;
-    private Button btnSelectPic,btnStartDetect;
+    private Button btnSelectPic,btnStartDetect,btnBlowUp;
     private ImageView ivPic;
     private TextView tvResult;
     private Dialog selectPicDialog;
@@ -75,7 +84,10 @@ public class MainActivity extends AppCompatActivity {
     private ProgressDialog mProgressDialog;
     private SwitchCompat scMode;
     private boolean MODE = false;
-
+    private AlertDialog mAlertDialog;
+    private boolean notShowAlert = false;
+    private Dialog mZoomImageDialog;
+    private Bitmap preBitmap;
     //加载opencv的回调监听
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
         @Override
@@ -103,12 +115,17 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         btnSelectPic = (Button) findViewById(R.id.btn_select_pic);
         btnStartDetect = (Button) findViewById(R.id.btn_start_detect);
+        btnBlowUp = (Button) findViewById(R.id.btn_blow_up);
         tvResult = (TextView) findViewById(R.id.tv_result);
         ivPic = (ImageView) findViewById(R.id.iv_pic);
         scMode = (SwitchCompat) findViewById(R.id.sc_mode);
         scMode.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                notShowAlert = getSharedPreferences("PPC_SP",MODE_PRIVATE).getBoolean("not_show_alert",false);
+                if (isChecked && !notShowAlert){
+                    mAlertDialog.show();
+                }
                 MODE = isChecked;
             }
         });
@@ -117,7 +134,7 @@ public class MainActivity extends AppCompatActivity {
         selectDiagView.findViewById(R.id.btn_take_photo).setOnClickListener(listener);
         selectDiagView.findViewById(R.id.btn_album).setOnClickListener(listener);
         selectDiagView.findViewById(R.id.btn_cancel_diag).setOnClickListener(listener);
-        Window diagWindow = selectPicDialog.getWindow();
+        final Window diagWindow = selectPicDialog.getWindow();
         diagWindow.setGravity(Gravity.BOTTOM);
         diagWindow.setContentView(selectDiagView);
         diagWindow.setLayout(WindowManager.LayoutParams.MATCH_PARENT
@@ -127,10 +144,30 @@ public class MainActivity extends AppCompatActivity {
         selectPicDialog.setCancelable(true);
         btnStartDetect.setOnClickListener(listener);
         btnSelectPic.setOnClickListener(listener);
+        btnBlowUp.setOnClickListener(listener);
         mProgressDialog = new ProgressDialog(this);
         mProgressDialog.setMessage("请稍后....");
         mProgressDialog.setCanceledOnTouchOutside(false);
         mProgressDialog.setCancelable(false);
+        mAlertDialog = new AlertDialog.Builder(this)
+                .setTitle("提示")
+                .setMessage("“最小值过滤模式”的意思是通过人为设置一个固定的阈值，低于这个阈值的像素块会被忽略不计，请您通过右上角的设置按钮进入设置页面设置阈值。注；设置的阈值仅对此模式有效！！！")
+                .setCancelable(true)
+                .setNegativeButton("不再提醒", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        SharedPreferences.Editor editor = MainActivity.this.getSharedPreferences("PPC_SP",MODE_PRIVATE).edit();
+                        editor.putBoolean("not_show_alert",true);
+                        editor.commit();
+                    }
+                })
+                .setPositiveButton("确定", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        dialog.dismiss();
+                    }
+                })
+                .create();
 
         //test
 
@@ -173,9 +210,61 @@ public class MainActivity extends AppCompatActivity {
                 case R.id.btn_start_detect:
                     new ImageProcessTask().execute();
                     break;
+                case R.id.btn_blow_up:
+                    blowUp();
+                    break;
             }
         }
     };
+
+    private void blowUp() {
+        DragZoomImageView dziv = null;
+        if (mZoomImageDialog == null) {
+            mZoomImageDialog = new Dialog(this);
+            View view = LayoutInflater.from(MainActivity.this).inflate(R.layout.diaglog_image, null, false);
+            mZoomImageDialog.setCancelable(true);
+            dziv = (DragZoomImageView) view.findViewById(R.id.dziv);
+            final Window diagWindow = mZoomImageDialog.getWindow();
+            diagWindow.setGravity(Gravity.CENTER);
+            diagWindow.setContentView(view);
+            diagWindow.setLayout(WindowManager.LayoutParams.MATCH_PARENT
+                    ,WindowManager.LayoutParams.WRAP_CONTENT);
+            mZoomImageDialog.setContentView(view);
+            mZoomImageDialog.setCanceledOnTouchOutside(true);
+            mZoomImageDialog.setCancelable(true);
+        }
+        if (dziv != null){
+//            ViewGroup.LayoutParams params = dziv.getLayoutParams();
+//            LogUtil.v("lym","1:"+params.height+""+params.width);
+//            int height = params.height;
+//            int width = params.width;
+//            height = (width*preBitmap.getHeight())/preBitmap.getWidth();
+//            params.height = height;
+//            LogUtil.v("lym","2:"+params.height+""+params.width);
+//            dziv.setLayoutParams(params);
+            dziv.setImageBitmap(preBitmap);
+        }
+        mZoomImageDialog.show();
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        MenuInflater inflater = getMenuInflater();
+        inflater.inflate(R.menu.action_bar_menu,menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch (item.getItemId()){
+            case R.id.setting:
+                Intent intent = new Intent(MainActivity.this,SettingActivity.class);
+                startActivity(intent);
+                return true;
+            default:
+                return super.onOptionsItemSelected(item);
+        }
+    }
 
     /**
      * 使用系统自带应用程序打开相册
@@ -287,11 +376,13 @@ public class MainActivity extends AppCompatActivity {
 //                        LogUtil.v(tag,imageUri.toString());
                         bitmap = BitmapFactory.decodeStream(getContentResolver().openInputStream(imageUri));
                         ivPic.setImageBitmap(bitmap);
+                        preBitmap = bitmap;
                     } catch (FileNotFoundException e) {
                         e.printStackTrace();
                     }
                     //解除检测按钮的禁用状态
                     btnStartDetect.setEnabled(true);
+                    btnBlowUp.setEnabled(true);
                 }
                 break;
         }
@@ -404,6 +495,7 @@ public class MainActivity extends AppCompatActivity {
             Mat blurSrcMat = new Mat();
             Mat grayMat = new Mat();
             Mat binaryMat = new Mat();
+            Mat dstMat = new Mat();
             int blockSize = 25;
             int constValue = 10;
             double scale = 0.5;
@@ -411,19 +503,23 @@ public class MainActivity extends AppCompatActivity {
                 srcBitmap = BitmapFactory.decodeStream(getContentResolver().openInputStream(imageUri));
                 grayBitmap = Bitmap.createBitmap(srcBitmap.getWidth(), srcBitmap.getHeight(), Bitmap.Config.RGB_565);
                 binaryBitmap = Bitmap.createBitmap(srcBitmap.getWidth(),srcBitmap.getHeight(),Bitmap.Config.RGB_565);
+
                 Utils.bitmapToMat(srcBitmap, srcMat);//读取原图进入srcMat
                 Imgproc.blur(srcMat,blurSrcMat,new Size(3,3));//均值模糊处理
                 Imgproc.cvtColor(blurSrcMat, grayMat, Imgproc.COLOR_RGB2GRAY);//模糊处理的原图转灰度图
                 Imgproc.adaptiveThreshold(grayMat,binaryMat,255,Imgproc.ADAPTIVE_THRESH_MEAN_C,Imgproc.THRESH_BINARY_INV,blockSize,constValue);//自适应阈值，灰度图转二值图
-                Utils.matToBitmap(grayMat, grayBitmap); //convert mat to bitmap
-                Utils.matToBitmap(binaryMat,binaryBitmap);
+                Core.bitwise_not(binaryMat,binaryMat);
+                Mat kenel = Imgproc.getStructuringElement(Imgproc.MORPH_CROSS,new Size(3,3));
+                Imgproc.erode(binaryMat,dstMat,kenel);
+//                Utils.matToBitmap(grayMat, grayBitmap); //convert mat to bitmap
+//                Utils.matToBitmap(binaryMat,binaryBitmap);
                 LogUtil.i(tag, "procSrc2Gray sucess...");
                 //test
 //                LogUtil.v(tag,"first:"+binaryMat.rows()+"-"+binaryMat.cols());
 
                 Size size=new Size(binaryMat.width()*scale,binaryMat.height()*scale);//二值图片降质
                 Mat scaleBinaryMat = new Mat(size,CvType.CV_8UC1);
-                Imgproc.resize(binaryMat,scaleBinaryMat,size);//图片压缩，长宽各缩小一半
+                Imgproc.resize(dstMat,scaleBinaryMat,size);//图片压缩，长宽各缩小一半
 
                 Highgui.imwrite(getExternalCacheDir()+"/scale.jpg",scaleBinaryMat);//保存缩略后的二值图
                 File log = new File(getExternalCacheDir(),"log.txt");
@@ -446,6 +542,7 @@ public class MainActivity extends AppCompatActivity {
         protected void onPostExecute(Void aVoid) {
             mProgressDialog.dismiss();
             ivPic.setImageBitmap(scaleBinaryBitmap);
+            preBitmap = scaleBinaryBitmap;
             tvResult.setText("分析结果是:"+result);
         }
     }

@@ -7,7 +7,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:checked="false"
-        android:text="大虫模式"/>
+        android:text="最小值过滤模式"/>
     <TextView
         android:text="请选择图片后点击开始检测按钮!"
         android:layout_width="match_parent"
@@ -19,7 +19,17 @@
         android:layout_height="320dp"
         android:src="@drawable/icon_select_pic"
         android:layout_gravity="center"
-        android:id="@+id/iv_pic" />
+        android:id="@+id/iv_pic"
+        android:scaleType="centerInside"/>
+    <Button
+        android:id="@+id/btn_blow_up"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:text="放大图片"
+        android:background="@drawable/bg_btn"
+        android:enabled="false"
+        android:layout_marginTop="20dp"/>
     <LinearLayout
         android:layout_marginTop="30dp"
         android:layout_width="match_parent"
@@ -43,7 +53,6 @@
             android:enabled="false"
             android:layout_marginLeft="30dp"/>
     </LinearLayout>
-
 
 
 
