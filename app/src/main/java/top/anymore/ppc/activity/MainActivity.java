@@ -66,6 +66,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import top.anymore.ppc.R;
+import top.anymore.ppc.dataprocess.CacheValue;
 import top.anymore.ppc.dataprocess.DataProcess;
 import top.anymore.ppc.logutil.LogUtil;
 import top.anymore.ppc.view.DragZoomImageView;
@@ -75,7 +76,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int ACTION_TACK_PHOTO = 1;
     private static final int ACTION_FROM_ALBUM = 2;
     private static final int ACTION_CROP_PHOTO = 3;
-    private Button btnSelectPic,btnStartDetect,btnBlowUp;
+    private Button btnSelectPic,btnStartDetect,btnBlowUp,btnDoubt;
     private ImageView ivPic;
     private TextView tvResult;
     private Dialog selectPicDialog;
@@ -84,7 +85,7 @@ public class MainActivity extends AppCompatActivity {
     private ProgressDialog mProgressDialog;
     private SwitchCompat scMode;
     private boolean MODE = false;
-    private AlertDialog mAlertDialog;
+    private AlertDialog mAlertDialog,mDoubtAlertDialog;
     private boolean notShowAlert = false;
     private Dialog mZoomImageDialog;
     private Bitmap preBitmap;
@@ -109,6 +110,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         initViews();//初始化布局
         outputImage = new File(getExternalCacheDir(),"output_image.jpg");
+        CacheValue.threshold = getSharedPreferences("PPC_SP",MODE_PRIVATE).getInt("threshold",25);
     }
 
     private void initViews() {
@@ -116,6 +118,7 @@ public class MainActivity extends AppCompatActivity {
         btnSelectPic = (Button) findViewById(R.id.btn_select_pic);
         btnStartDetect = (Button) findViewById(R.id.btn_start_detect);
         btnBlowUp = (Button) findViewById(R.id.btn_blow_up);
+        btnDoubt = (Button) findViewById(R.id.btn_doubt);
         tvResult = (TextView) findViewById(R.id.tv_result);
         ivPic = (ImageView) findViewById(R.id.iv_pic);
         scMode = (SwitchCompat) findViewById(R.id.sc_mode);
@@ -145,6 +148,7 @@ public class MainActivity extends AppCompatActivity {
         btnStartDetect.setOnClickListener(listener);
         btnSelectPic.setOnClickListener(listener);
         btnBlowUp.setOnClickListener(listener);
+        btnDoubt.setOnClickListener(listener);
         mProgressDialog = new ProgressDialog(this);
         mProgressDialog.setMessage("请稍后....");
         mProgressDialog.setCanceledOnTouchOutside(false);
@@ -168,7 +172,17 @@ public class MainActivity extends AppCompatActivity {
                     }
                 })
                 .create();
-
+        mDoubtAlertDialog = new AlertDialog.Builder(this)
+                .setTitle("提示")
+                .setMessage("最小值过滤模式是通过在设置页面设置一个人像素块，低于此像素块大小的黑点在统计过程中会被丢弃.你可以通过设置来寻求一个最优阈值进行统计.设置的默认阈值为25,你的设置将会进行保存.\n点击右上角设置按钮进入设置页面.")
+                .setCancelable(true)
+                .setPositiveButton("确定", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        dialog.dismiss();
+                    }
+                })
+                .create();
         //test
 
     }
@@ -213,37 +227,28 @@ public class MainActivity extends AppCompatActivity {
                 case R.id.btn_blow_up:
                     blowUp();
                     break;
+                case R.id.btn_doubt:
+                    mDoubtAlertDialog.show();
+                    break;
             }
         }
     };
 
     private void blowUp() {
         DragZoomImageView dziv = null;
-        if (mZoomImageDialog == null) {
-            mZoomImageDialog = new Dialog(this);
-            View view = LayoutInflater.from(MainActivity.this).inflate(R.layout.diaglog_image, null, false);
-            mZoomImageDialog.setCancelable(true);
-            dziv = (DragZoomImageView) view.findViewById(R.id.dziv);
-            final Window diagWindow = mZoomImageDialog.getWindow();
-            diagWindow.setGravity(Gravity.CENTER);
-            diagWindow.setContentView(view);
-            diagWindow.setLayout(WindowManager.LayoutParams.MATCH_PARENT
-                    ,WindowManager.LayoutParams.WRAP_CONTENT);
-            mZoomImageDialog.setContentView(view);
-            mZoomImageDialog.setCanceledOnTouchOutside(true);
-            mZoomImageDialog.setCancelable(true);
-        }
-        if (dziv != null){
-//            ViewGroup.LayoutParams params = dziv.getLayoutParams();
-//            LogUtil.v("lym","1:"+params.height+""+params.width);
-//            int height = params.height;
-//            int width = params.width;
-//            height = (width*preBitmap.getHeight())/preBitmap.getWidth();
-//            params.height = height;
-//            LogUtil.v("lym","2:"+params.height+""+params.width);
-//            dziv.setLayoutParams(params);
-            dziv.setImageBitmap(preBitmap);
-        }
+        mZoomImageDialog = new Dialog(this);
+        View view = LayoutInflater.from(MainActivity.this).inflate(R.layout.diaglog_image, null, false);
+        mZoomImageDialog.setCancelable(true);
+        dziv = (DragZoomImageView) view.findViewById(R.id.dziv);
+        final Window diagWindow = mZoomImageDialog.getWindow();
+        diagWindow.setGravity(Gravity.CENTER);
+        diagWindow.setContentView(view);
+        diagWindow.setLayout(WindowManager.LayoutParams.MATCH_PARENT
+                ,WindowManager.LayoutParams.WRAP_CONTENT);
+        mZoomImageDialog.setContentView(view);
+        mZoomImageDialog.setCanceledOnTouchOutside(true);
+        mZoomImageDialog.setCancelable(true);
+        dziv.setImageBitmap(preBitmap);
         mZoomImageDialog.show();
     }
 

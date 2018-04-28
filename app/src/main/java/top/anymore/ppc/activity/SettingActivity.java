@@ -1,6 +1,7 @@
 package top.anymore.ppc.activity;
 
 import android.app.ProgressDialog;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.os.AsyncTask;
 import android.support.v7.app.AppCompatActivity;
@@ -48,6 +49,7 @@ public class SettingActivity extends AppCompatActivity implements View.OnClickLi
         btnPre = (Button) findViewById(R.id.btn_pre);
         btnSetting = (Button) findViewById(R.id.btn_setting);
         ivPreview = (ImageView) findViewById(R.id.iv_preview);
+        etThreshold.setText(CacheValue.threshold+"");
         mProgressDialog = new ProgressDialog(this);
         mProgressDialog.setTitle("请稍后");
         mProgressDialog.setMessage("正在生成预览图块...");
@@ -70,6 +72,14 @@ public class SettingActivity extends AppCompatActivity implements View.OnClickLi
     }
 
     private void settingThreshold() {
+        threshold = Integer.parseInt(etThreshold.getText().toString());
+        if (threshold < 0){
+            Toast.makeText(SettingActivity.this,"设置像素块不能为负,请重新设置!",Toast.LENGTH_LONG).show();
+            return;
+        }
+        SharedPreferences.Editor editor = getSharedPreferences("PPC_SP",MODE_PRIVATE).edit();
+        editor.putInt("threshold",threshold);
+        editor.commit();
         CacheValue.threshold = this.threshold;
         Toast.makeText(SettingActivity.this,"设置成功..",Toast.LENGTH_LONG).show();
 

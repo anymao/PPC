@@ -3,10 +3,12 @@
     android:orientation="vertical" android:layout_width="wrap_content"
     android:layout_height="match_parent"
     android:gravity="center"
+    android:layout_gravity="center"
     android:background="@android:color/transparent">
     <top.anymore.ppc.view.DragZoomImageView
         android:id="@+id/dziv"
         android:layout_width="350dp"
         android:layout_height="350dp"
-        android:scaleType="matrix"/>
+        android:scaleType="matrix"
+        android:layout_gravity="center"/>
 </LinearLayout>
